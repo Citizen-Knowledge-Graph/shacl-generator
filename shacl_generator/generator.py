@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 import json
-from rdflib import Graph
+from rdflib import Graph, Namespace
+from rdflib.namespace import XSD, RDFS
 
 from .llm import LLMInterface
 from .datafields import DataFieldRegistry, DataField
@@ -69,6 +70,11 @@ class ShaclGenerator:
         self.field_registry = field_registry
         self.llm = LLMInterface(field_registry=field_registry)
         
+        # Define namespaces
+        self.FF = Namespace("https://foerderfunke.org/default#")
+        self.SH = Namespace("http://www.w3.org/ns/shacl#")
+        self.RDF = Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+        
     def _get_relevant_examples(self, text_id: str, max_examples: int = 3) -> List[Dict]:
         """Get relevant examples for the generation context."""
         if not self.example_store:
@@ -96,28 +102,42 @@ class ShaclGenerator:
         
     def generate_shape(self, legal_text: str, text_id: str) -> Tuple[Graph, List[DataField]]:
         """Generate a SHACL shape from legal text."""
+        # Initialize the graph with standard prefixes
+        g = Graph()
+        g.bind('sh', self.SH)
+        g.bind('xsd', XSD)
+        g.bind('ff', self.FF)
+        g.bind('rdfs', RDFS)
+        g.bind('rdf', self.RDF)
+
+        # Get examples and feedback for context
         examples = self._get_relevant_examples(text_id)
         feedback_history = self._get_relevant_feedback(text_id)
         
-        shape, new_fields = self.llm.generate_shape(
+        # Generate the shape using LLM
+        generated_graph, new_fields = self.llm.generate_shape(
             legal_text=legal_text,
             examples=examples,
             feedback_history=feedback_history,
             guidelines=self.context.general_guidelines
         )
         
+        # Merge the generated graph into our base graph
+        g += generated_graph
+        
         # Add any new fields to the registry
         if self.field_registry and new_fields:
             for field in new_fields:
                 self.field_registry.add_field(field)
         
-        return shape, new_fields
+        return g, new_fields
         
     def improve_shape(self, shape: Graph, feedback: str, text_id: str) -> Tuple[Graph, List[DataField]]:
         """Improve a SHACL shape based on feedback."""
         feedback_history = self._get_relevant_feedback(text_id)
         
-        improved_shape, new_fields = self.llm.improve_shape(
+        # Improve the shape using LLM
+        improved_graph, new_fields = self.llm.improve_shape(
             current_shape=shape,
             feedback=feedback,
             feedback_history=feedback_history,
@@ -129,7 +149,7 @@ class ShaclGenerator:
             for field in new_fields:
                 self.field_registry.add_field(field)
         
-        return improved_shape, new_fields
+        return improved_graph, new_fields
         
     def add_general_guideline(self, guideline: str) -> None:
         """Add a guideline that should apply to all future generations."""

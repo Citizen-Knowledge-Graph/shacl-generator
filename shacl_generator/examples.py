@@ -71,3 +71,20 @@ class ExampleStore:
                     shacl_shape_path=shacl_path,
                     annotations_path=annotations_path if annotations_path.exists() else None
                 ) 
+
+    def delete_example(self, index: int) -> None:
+        """Delete an example at the given index and its associated files."""
+        if 0 <= index < len(self.examples):
+            example = self.examples[index]
+            
+            # Get the example directory
+            example_dir = self.examples_dir / f"example_{index}"
+            if example_dir.exists():
+                # Delete all files in the directory
+                for file in example_dir.iterdir():
+                    file.unlink()
+                # Remove the directory
+                example_dir.rmdir()
+            
+            # Remove from list
+            self.examples.pop(index) 

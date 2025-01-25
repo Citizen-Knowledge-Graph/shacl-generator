@@ -11,8 +11,45 @@ from .datafields import DataFieldRegistry, DataField
 # Load environment variables
 load_dotenv()
 
+SHACL_GENERATION_SYSTEM_PROMPT = """You are a SHACL shape generator that converts legal text requirements into SHACL shapes.
+Follow these structural requirements for all shapes:
+
+1. Create a RequirementProfile with a succinct name in the ff namespace that reflects the benefit type
+   Example: ff:buergergeld a ff:RequirementProfile ;
+
+2. Create a MainPersonShape with a name that combines the benefit name with 'MainPersonShape'
+   Example: ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint ;
+
+3. Link them using ff:hasMainPersonShape
+   Example: ff:buergergeld ff:hasMainPersonShape ff:buergergeldMainPersonShape .
+
+4. Set the MainPersonShape target class
+   Example: ff:buergergeldMainPersonShape sh:targetClass ff:Citizen .
+
+Complete example structure:
+@prefix ff: <http://example.org/foerderfunke#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+ff:buergergeld a ff:RequirementProfile ;
+    ff:hasMainPersonShape ff:buergergeldMainPersonShape .
+
+ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint ;
+    sh:targetClass ff:Citizen .
+
+Additional guidelines:
+- Use meaningful IDs for shapes and properties
+- Add rdfs:label and rdfs:comment where appropriate
+- Use existing vocabulary terms when possible
+- Follow SHACL best practices for constraint definitions
+
+{additional_guidelines}
+
+Analyze the legal text and create appropriate SHACL property shapes within the MainPersonShape.
+Use a succinct, lowercase name for the benefit type in the ff namespace.
+"""
+
 class LLMInterface:
-    def __init__(self, model: str = "gpt-4-turbo-preview", field_registry: Optional[DataFieldRegistry] = None):
+    def __init__(self, model: str = "gpt-4o-mini", field_registry: Optional[DataFieldRegistry] = None):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = model
         self.field_registry = field_registry
@@ -207,7 +244,7 @@ class LLMInterface:
         feedback_history: List[Dict] = None,
         guidelines: List[str] = None
     ) -> Tuple[Graph, List[DataField]]:
-        """Generate a SHACL shape from legal text and return any new fields."""
+        """Generate a SHACL shape from legal text."""
         prompt = self._create_generation_prompt(
             legal_text=legal_text,
             examples=examples,
@@ -218,7 +255,7 @@ class LLMInterface:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are a specialized AI that converts legal texts to SHACL shapes. Output only valid Turtle syntax."},
+                {"role": "system", "content": SHACL_GENERATION_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2
@@ -290,7 +327,7 @@ Output only the fixed Turtle syntax, no explanations."""
         feedback_history: List[Dict] = None,
         guidelines: List[str] = None
     ) -> Tuple[Graph, List[DataField]]:
-        """Improve a SHACL shape based on feedback and return any new fields."""
+        """Improve a SHACL shape based on feedback."""
         prompt = self._create_improvement_prompt(
             current_shape=current_shape.serialize(format='turtle'),
             feedback=feedback,

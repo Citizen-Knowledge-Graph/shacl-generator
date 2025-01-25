@@ -1,0 +1,12 @@
+aufenthalt: true
+aufenthaltsort: aufenthaltsort-ao-innerhalb
+beruf_neu: beruf_neu-ao-selbstaendig
+einkommen_familie: einkommen_familie-ao-monatsbrutto-ueber-900-600
+einkommen_neu: einkommen_neu-ao-selbstaendig
+erwerbsfaehig_neu: erwerbsfaehig_neu-ao-ja
+geburtsdatum: 1991-01-12
+hasAge: '27'
+kinder_unter_18: true
+lebenslage: true
+lebenssituation: lebenssituation-ao-allein
+staatsbuergerschaft: staatsbuergerschaft-ao-ger
