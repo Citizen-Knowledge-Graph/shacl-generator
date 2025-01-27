@@ -414,4 +414,15 @@ class DataFieldRegistry:
             examples=[],
             synonyms=[term] if term != name else [],
             constraints={}
-        ) 
+        )
+    
+    def update_field_datatype(self, field_name: str, new_datatype: str) -> None:
+        """Update the datatype of an existing field."""
+        if field_name not in self.fields:
+            raise ValueError(f"Unknown field: {field_name}")
+            
+        if not new_datatype.startswith("xsd:"):
+            raise ValueError("Datatype must start with 'xsd:'")
+            
+        # Update the field's datatype
+        self.fields[field_name].datatype = new_datatype 

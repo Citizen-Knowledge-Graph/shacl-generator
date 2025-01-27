@@ -30,6 +30,16 @@ class GeneratorContext:
     def add_guideline(self, guideline: str) -> None:
         """Add a general guideline that should apply to all future generations."""
         self.general_guidelines.append(guideline)
+    
+    def remove_guideline(self, index: int) -> None:
+        """Remove a guideline by its index."""
+        if 0 <= index < len(self.general_guidelines):
+            del self.general_guidelines[index]
+        
+    def remove_feedback(self, index: int) -> None:
+        """Remove a feedback item by its index."""
+        if 0 <= index < len(self.feedback_history):
+            del self.feedback_history[index]
         
     def save(self, path: Path) -> None:
         """Save context to disk."""
@@ -104,11 +114,18 @@ class ShaclGenerator:
         """Generate a SHACL shape from legal text."""
         # Initialize the graph with standard prefixes
         g = Graph()
+        print("=== GENERATOR BEFORE ===")
+        print("Namespaces:", list(g.namespaces()))
+        
+        # Bind namespaces in the order we want them to appear
+        g.bind('ff', self.FF)  # Bind ff first to make it the preferred namespace
         g.bind('sh', self.SH)
         g.bind('xsd', XSD)
-        g.bind('ff', self.FF)
         g.bind('rdfs', RDFS)
         g.bind('rdf', self.RDF)
+        
+        print("=== GENERATOR AFTER BINDING ===")
+        print("Namespaces:", list(g.namespaces()))
 
         # Get examples and feedback for context
         examples = self._get_relevant_examples(text_id)

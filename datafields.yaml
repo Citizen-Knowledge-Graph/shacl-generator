@@ -338,7 +338,7 @@ pensionable:
 hasAge:
   name: hasAge
   path: ff:hasAge
-  datatype: xsd:string
+  datatype: xsd:integer
   description: Age
   examples: []
   synonyms: []

@@ -13,6 +13,7 @@ from shacl_generator.examples import ExampleStore, ExampleMapping
 from shacl_generator.generator import ShaclGenerator, GeneratorContext
 from shacl_generator.datafields import DataFieldRegistry, DataField
 from shacl_generator.instances import InstanceStore
+from shacl_generator.llm import SHACL_GENERATION_SYSTEM_PROMPT
 
 # Set page config first
 st.set_page_config(
@@ -85,7 +86,7 @@ with st.sidebar:
     st.header("Navigation")
     mode = st.radio(
         "Mode",
-        ["Generate SHACL", "Manage Examples", "Manage Guidelines", "Manage Data Fields", "Manage Instances"]
+        ["Generate SHACL", "Manage Examples", "Manage Guidelines", "Manage Data Fields", "Manage Instances", "Manage Feedback"]
     )
 
 if mode == "Generate SHACL":
@@ -124,16 +125,54 @@ if mode == "Generate SHACL":
                 with st.spinner("Generating SHACL shape..."):
                     # Generate unique ID for the text
                     text_id = str(hash(legal_text))
-                    shape, new_fields = generator.generate_shape(legal_text, text_id)
-                    st.session_state['current_shape'] = shape
-                    st.session_state['current_text_id'] = text_id
                     
-                    if new_fields:
-                        st.info(f"Added {len(new_fields)} new data fields")
-                        for field in new_fields:
-                            st.write(f"- {field.name} ({field.datatype})")
+                    # Create debug container
+                    debug_container = st.empty()
                     
-                    st.success("SHACL shape generated!")
+                    # Store old print function
+                    old_print = print
+                    debug_output = []
+                    
+                    # Create custom print function
+                    def custom_print(*args):
+                        message = " ".join(map(str, args))
+                        debug_output.append(message)
+                        debug_container.text("\n".join(debug_output))
+                        old_print(*args)  # Still print to console
+                    
+                    # Replace print function
+                    import builtins
+                    builtins.print = custom_print
+                    
+                    try:
+                        # Get the prompt first
+                        prompt = generator.llm._create_generation_prompt(
+                            legal_text=legal_text,
+                            examples=generator._get_relevant_examples(text_id),
+                            feedback_history=generator._get_relevant_feedback(text_id),
+                            guidelines=generator.context.general_guidelines
+                        )
+                        
+                        # Store prompt in session state
+                        st.session_state['current_prompt'] = prompt
+                        
+                        # Generate the shape
+                        shape, new_fields = generator.generate_shape(legal_text, text_id)
+                        st.session_state['current_shape'] = shape
+                        st.session_state['current_text_id'] = text_id
+                        
+                        if new_fields:
+                            st.info(f"Added {len(new_fields)} new data fields")
+                            for field in new_fields:
+                                st.write(f"- {field.name} ({field.datatype})")
+                        
+                        # Store debug output
+                        st.session_state['debug_output'] = "\n".join(debug_output)
+                        
+                        st.success("SHACL shape generated!")
+                    finally:
+                        # Restore print function
+                        builtins.print = old_print
             else:
                 st.warning("Please provide some legal text first.")
     
@@ -141,13 +180,61 @@ if mode == "Generate SHACL":
         st.header("Generated SHACL Shape")
         
         if 'current_shape' in st.session_state:
-            shape_text = st.session_state['current_shape'].serialize(format='turtle')
-            st.text_area("SHACL Shape", shape_text, height=300)
-            
-            # Create two tabs for validation and feedback
-            tab1, tab2 = st.tabs(["Validate Instance", "Provide Feedback"])
+            # Add tabs for shape, prompts, validation, and debug
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "SHACL Shape", 
+                "System Prompt", 
+                "Generation Prompt", 
+                "Validate Instance",
+                "Debug Output"
+            ])
             
             with tab1:
+                shape_text = st.session_state['current_shape'].serialize(format='turtle')
+                st.text_area("SHACL Shape", shape_text, height=300)
+                
+                # Add feedback section under the shape
+                feedback = st.text_area(
+                    "Enter feedback to improve the shape", 
+                    height=100,
+                    key="shape_feedback"
+                )
+                
+                if st.button("Improve Shape"):
+                    with st.spinner("Improving SHACL shape..."):
+                        improved_shape, new_fields = generator.improve_shape(
+                            st.session_state['current_shape'],
+                            feedback,
+                            st.session_state['current_text_id']
+                        )
+                        # Save feedback and update shape
+                        generator.context.add_feedback(
+                            st.session_state['current_text_id'],
+                            feedback,
+                            improved_shape.serialize(format='turtle')
+                        )
+                        generator.context.save(CONTEXT_PATH)
+                        st.session_state['current_shape'] = improved_shape
+                        
+                        if new_fields:
+                            st.info(f"Added {len(new_fields)} new data fields")
+                            for field in new_fields:
+                                st.write(f"- {field.name} ({field.datatype})")
+                        
+                        st.success("Shape improved based on feedback!")
+                        st.rerun()
+            
+            with tab2:
+                st.text_area("System Prompt", 
+                            SHACL_GENERATION_SYSTEM_PROMPT,
+                            height=500)
+            
+            with tab3:
+                st.text_area("Generation Prompt", 
+                            st.session_state['current_prompt'],
+                            height=500)
+            
+            with tab4:
                 selected_instance = st.selectbox(
                     "Select Instance to Validate",
                     options=list(instance_store.instances.keys()),
@@ -181,44 +268,9 @@ if mode == "Generate SHACL":
                     except Exception as e:
                         st.error(f"Error during validation: {str(e)}")
             
-            with tab2:
-                feedback = st.text_area(
-                    "Enter feedback to improve the shape", 
-                    height=100,
-                    key="shape_feedback"
-                )
-                
-                if st.button("Improve Shape"):
-                    with st.spinner("Improving SHACL shape..."):
-                        improved_shape, new_fields = generator.improve_shape(
-                            st.session_state['current_shape'],
-                            feedback,
-                            st.session_state['current_text_id']
-                        )
-                        # Save feedback and update shape
-                        generator.context.add_feedback(
-                            st.session_state['current_text_id'],
-                            feedback,
-                            improved_shape.serialize(format='turtle')
-                        )
-                        generator.context.save(CONTEXT_PATH)
-                        st.session_state['current_shape'] = improved_shape
-                        
-                        # Update the shape text area immediately
-                        shape_text = improved_shape.serialize(format='turtle')
-                        st.text_area(
-                            "Improved SHACL Shape", 
-                            shape_text, 
-                            height=300, 
-                            key="improved_shape"
-                        )
-                        
-                        if new_fields:
-                            st.info(f"Added {len(new_fields)} new data fields")
-                            for field in new_fields:
-                                st.write(f"- {field.name} ({field.datatype})")
-                        
-                        st.success("Shape improved based on feedback!")
+            with tab5:
+                if 'debug_output' in st.session_state:
+                    st.text(st.session_state['debug_output'])
 
 elif mode == "Manage Examples":
     st.header("Example Management")
@@ -381,10 +433,20 @@ elif mode == "Manage Guidelines":
             generator.context.save(CONTEXT_PATH)
             st.success("Guideline added successfully!")
     
-    # View existing guidelines
+    # View and manage existing guidelines
     st.subheader("Existing Guidelines")
     for i, guideline in enumerate(generator.context.general_guidelines):
-        st.text_area(f"Guideline {i+1}", guideline, height=100)
+        col1, col2 = st.columns([5,1])
+        
+        with col1:
+            st.text_area(f"Guideline {i+1}", guideline, height=100, key=f"guideline_{i}")
+            
+        with col2:
+            if st.button("🗑️ Delete", key=f"delete_guideline_{i}"):
+                generator.context.remove_guideline(i)  # We'll add this method
+                generator.context.save(CONTEXT_PATH)
+                st.success(f"Guideline {i+1} deleted!")
+                st.rerun()
 
 elif mode == "Manage Instances":
     st.header("Instance Management")
@@ -468,6 +530,38 @@ elif mode == "Manage Instances":
                     height=200
                 )
 
+elif mode == "Manage Feedback":
+    st.header("Feedback Management")
+    
+    if not generator.context.feedback_history:
+        st.info("No feedback history available yet.")
+    else:
+        for i, feedback_item in enumerate(generator.context.feedback_history):
+            with st.expander(f"Feedback {i+1} (Text ID: {feedback_item.text_id})"):
+                col1, col2 = st.columns([5,1])
+                
+                with col1:
+                    st.text_area(
+                        "Feedback",
+                        feedback_item.feedback,
+                        height=100,
+                        key=f"feedback_{i}"
+                    )
+                    
+                    st.text_area(
+                        "Improved Shape",
+                        feedback_item.improved_shape,
+                        height=200,
+                        key=f"improved_shape_{i}"
+                    )
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"delete_feedback_{i}"):
+                        generator.context.remove_feedback(i)  # We'll add this method
+                        generator.context.save(CONTEXT_PATH)
+                        st.success(f"Feedback {i+1} deleted!")
+                        st.rerun()
+
 else:  # Manage Data Fields mode
     st.header("Manage Data Fields")
     
@@ -516,101 +610,43 @@ else:  # Manage Data Fields mode
                 except Exception as e:
                     st.error(f"Error importing fields: {str(e)}")
     
-    # Add new field manually
-    with st.expander("Add New Data Field"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            field_name = st.text_input("Field Name", placeholder="e.g., age, income")
-            field_path = st.text_input("Property Path", placeholder="e.g., ex:age")
-            field_datatype = st.selectbox(
-                "Data Type",
-                ["xsd:string", "xsd:integer", "xsd:decimal", "xsd:date", "xsd:boolean"]
-            )
-        
-        with col2:
-            field_description = st.text_area(
-                "Description",
-                placeholder="Describe what this field represents"
-            )
-            field_examples = st.text_input(
-                "Examples",
-                placeholder="Comma-separated examples"
-            )
-            field_synonyms = st.text_input(
-                "Synonyms",
-                placeholder="Comma-separated alternative terms"
-            )
-        
-        if st.button("Add Field"):
-            if field_name and field_path and field_description:
-                field = DataField(
-                    name=field_name,
-                    path=field_path,
-                    datatype=field_datatype,
-                    description=field_description,
-                    examples=field_examples.split(",") if field_examples else [],
-                    synonyms=field_synonyms.split(",") if field_synonyms else []
-                )
-                field_registry.add_field(field)
-                st.success(f"Added field: {field_name}")
-            else:
-                st.warning("Please provide name, path, and description.")
-    
-    # View existing fields
+    # View and edit existing fields
     st.subheader("Existing Data Fields")
-    for field in field_registry.fields.values():
-        with st.expander(f"{field.name} ({field.datatype})"):
-            st.write("**Path:**", field.path)
-            st.write("**Description:**", field.description)
+    
+    for field_name, field in field_registry.fields.items():
+        with st.expander(f"Field: {field_name}"):
+            col1, col2 = st.columns([3, 1])
             
-            # Display constraints in a structured way
-            st.write("**Constraints:**")
-            if not field.constraints:
-                st.write("*No constraints defined*")
-            else:
-                # Object constraints
-                if any(k in field.constraints for k in ['datatype', 'allowed_values', 'pattern', 'minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive', 'languageIn', 'uniqueLang']):
-                    st.write("*Object Constraints:*")
-                    if 'datatype' in field.constraints:
-                        st.write(f"- Datatype: `{field.constraints['datatype']}`")
-                    if 'allowed_values' in field.constraints:
-                        st.write("- Allowed Values:")
-                        for val in field.constraints['allowed_values']:
-                            st.write(f"  - {val['label']} (`{val['id']}`)")
-                    if 'pattern' in field.constraints:
-                        st.write(f"- Pattern: `{field.constraints['pattern']}`")
-                    for constraint in ['minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive']:
-                        if constraint in field.constraints:
-                            st.write(f"- {constraint}: {field.constraints[constraint]}")
-                    if 'languageIn' in field.constraints:
-                        st.write(f"- Language In: {', '.join(field.constraints['languageIn'])}")
-                    if 'uniqueLang' in field.constraints:
-                        st.write(f"- Unique Language: {field.constraints['uniqueLang']}")
-                
-                # Usage constraints
-                if any(k in field.constraints for k in ['minCount', 'maxCount', 'qualifiedMinCount', 'qualifiedMaxCount', 'qualifiedValueShape']):
-                    st.write("*Usage Constraints:*")
-                    if 'minCount' in field.constraints:
-                        st.write(f"- Minimum Count: {field.constraints['minCount']}")
-                    if 'maxCount' in field.constraints:
-                        st.write(f"- Maximum Count: {field.constraints['maxCount']}")
-                    if 'qualifiedMinCount' in field.constraints:
-                        st.write(f"- Qualified Minimum Count: {field.constraints['qualifiedMinCount']}")
-                    if 'qualifiedMaxCount' in field.constraints:
-                        st.write(f"- Qualified Maximum Count: {field.constraints['qualifiedMaxCount']}")
-                    if 'qualifiedValueShape' in field.constraints:
-                        st.write(f"- Qualified Value Shape: {field.constraints['qualifiedValueShape']}")
-                
-                # Target constraints
-                if any(k in field.constraints for k in ['targetObjectsOf', 'targetSubjectsOf']):
-                    st.write("*Target Constraints:*")
-                    if 'targetObjectsOf' in field.constraints:
-                        st.write(f"- Target Objects Of: {field.constraints['targetObjectsOf']}")
-                    if 'targetSubjectsOf' in field.constraints:
-                        st.write(f"- Target Subjects Of: {field.constraints['targetSubjectsOf']}")
+            with col1:
+                st.text(f"Path: {field.path}")
+                st.text_area("Description", field.description, key=f"desc_{field_name}")
             
-            if field.examples:
-                st.write("**Examples:**", ", ".join(field.examples))
-            if field.synonyms:
-                st.write("**Synonyms:**", ", ".join(field.synonyms)) 
+            with col2:
+                # Datatype selection
+                datatype_options = [
+                    "xsd:string",
+                    "xsd:integer",
+                    "xsd:decimal",
+                    "xsd:boolean",
+                    "xsd:date"
+                ]
+                new_datatype = st.selectbox(
+                    "Datatype",
+                    options=datatype_options,
+                    index=datatype_options.index(field.datatype),
+                    key=f"datatype_{field_name}"
+                )
+                
+                if new_datatype != field.datatype:
+                    if st.button("Update Datatype", key=f"update_{field_name}"):
+                        try:
+                            field_registry.update_field_datatype(field_name, new_datatype)
+                            field_registry.save()
+                            st.success(f"Updated datatype for {field_name}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error updating datatype: {str(e)}")
+            
+            # Show constraints
+            if field.constraints:
+                st.json(field.constraints) 
