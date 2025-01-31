@@ -11,78 +11,167 @@ from .datafields import DataFieldRegistry, DataField
 # Load environment variables
 load_dotenv()
 
-SHACL_GENERATION_SYSTEM_PROMPT = """You are a specialized AI that converts legal texts about social benefits into SHACL shapes.
-SHACL shapes formally describe the requirements that must be met for a person to be eligible for the benefit.
+SHACL_GENERATION_SYSTEM_PROMPT = """
+Your task is to complete the SHACL shapes graph below from texts describing the eligibility requirements for a social benefit. The shapes graph will be used to validate RDF user graphs containing personal information, ensuring that only individuals eligible for the given benefit conform to the shapes graph.
 
-Follow these structural requirements for all shapes:
+# GENERAL SHACL FORMAT RULES
+1. Start with ALL necessary prefix declarations in this order:
+   @prefix ff: <https://foerderfunke.org/default#> .
+   @prefix sh: <http://www.w3.org/ns/shacl#> .
+   @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-1. Create a RequirementProfile with a succinct name in the ff namespace that reflects the benefit type
-   Example: ff:buergergeld a ff:RequirementProfile ;
+2. Use proper Turtle syntax:
+   - End each prefix declaration with a dot (.).
+   - Use semicolons (;) for multiple properties of the same subject.
+   - Use dots (.) to separate statements.
+   - Use semicolons (;) to separate multiple `sh:property` blocks.
+   - Use commas (,) only for multiple RDF types within `a`, never between properties.
+   - Maintain consistent indentation for readability.   
 
-2. Create a MainPersonShape with a name that combines the benefit name with 'MainPersonShape'
-   Example: ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint ;
+3. Output ONLY the Turtle syntax, no explanations or markdown.
 
-3. Link them using ff:hasMainPersonShape
+
+# STRUCTURAL FORMAT OF PRIMARY SHAPE
+1. Define a `RequirementProfile` with a succinct name in the `ff` namespace:
+   Example: ff:buergergeld a ff:RequirementProfile .
+
+2. Define a `MainPersonShape` with a name combining the benefit name and 'MainPersonShape':
+   Example: ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint .
+
+3. Link the `RequirementProfile` to the `MainPersonShape` using `ff:hasMainPersonShape`:
    Example: ff:buergergeld ff:hasMainPersonShape ff:buergergeldMainPersonShape .
 
-4. Set the MainPersonShape target class
+4. Set the `MainPersonShape` target class:
    Example: ff:buergergeldMainPersonShape sh:targetClass ff:Citizen .
 
 Example structure:
-
 ff:buergergeld a ff:RequirementProfile ;
     ff:hasMainPersonShape ff:buergergeldMainPersonShape .
 
 ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint ;
     sh:targetClass ff:Citizen .
 
-Technical Guidelines:
-1. Use sh:NodeShape to define the main shape for the person/applicant
-2. Use meaningful property paths that reflect the requirement's nature
-3. Include appropriate cardinality constraints (sh:minCount, sh:maxCount)
-4. Use sh:datatype for data type constraints
-5. Use sh:pattern for string patterns when applicable
-6. Add sh:description to explain each constraint in plain language
 
-IMPORTANT OUTPUT FORMAT RULES:
-1. Start with ALL necessary prefix declarations (@prefix)
-2. ALWAYS include these prefixes in this order:
-   @prefix ff: <https://foerderfunke.org/default#> .
-   @prefix sh: <http://www.w3.org/ns/shacl#> .
-   @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-3. Use proper Turtle syntax with dots (.) after each statement
-4. End each prefix declaration with a dot (.)
-5. Use semicolons (;) for multiple properties of the same subject
-6. Output ONLY the Turtle syntax, no explanations or markdown
+# STRUCTURAL FORMAT OF PROPERTY CONSTRAINTS
 
-Additional guidelines:
-- Use meaningful IDs for shapes and properties
-- Add rdfs:label and rdfs:comment where appropriate
-- Use existing vocabulary terms when possible
-- Follow SHACL best practices for constraint definitions
-- IMPORTANT: When using existing data fields, you MUST:
-  1. Use the EXACT field path as defined (e.g., ff:einkommen_neu)
-  2. Use the EXACT datatype as defined for that field
-  3. NEVER create new properties for concepts that have existing fields
-  4. Respect any allowed values defined in the field constraints
-  5. DO NOT add sh:datatype if the field already has allowed values
+1. Define each condition as a separate `sh:property` block with a **named URI instead of a blank node**.
+2. Include cardinality constraints for each property:
+   - Use `sh:minCount 1` for required properties.
+   - Use `sh:maxCount` if there is an upper limit.
+3. Use `sh:datatype` for data type constraints and `sh:pattern` for string patterns when applicable.
+4. Add `sh:description` to explain each constraint in plain language.
+5. Ensure each `sh:property` block is explicitly assigned a unique named URI (e.g., `ff:prop_aufenthaltsort, ff:prop_kindergeld`) instead of relying on blank nodes (`[]`). This prevents RDFLib from merging multiple properties into a list structure upon parsing.
 
-Example of correct field usage:
-If field 'einkommen_neu' exists with:
-- path: ff:einkommen_neu
-- datatype: xsd:string
-- allowed_values: ["einkommen_neu-ao-selbstaendig", "einkommen_neu-ao-angestellt"]
+Example of a correctly structured property shape:
+ff:buergergeldMainPersonShape sh:property ff:prop_aufenthaltsort ;
+    sh:property ff:prop_kindergeld .
+
+ff:prop_aufenthaltsort sh:path ff:aufenthaltsort ;
+    sh:in (ff:aufenthaltsort-ao-innerhalb) ;
+    sh:description "The child must reside in Germany or an EU country, Iceland, Liechtenstein, Norway, or Switzerland." .
+
+ff:prop_kindergeld sh:path ff:kindergeld ;
+    sh:not [ sh:in (true) ] ;
+    sh:description "Child benefit cannot be received if comparable benefits are received from an international or foreign institution." .
+
+
+# LOGICAL HANDLING OF ELIGIBILITY CONDITIONS
+
+1. Use distinct `sh:property` constraints for separate eligibility conditions. Do not group unrelated conditions.
+
+Example of separate constraints:
+ff:prop_income sh:path ff:income ;
+       sh:maxInclusive 1500 ;
+       sh:description "The person's income must not exceed 1500 EUR." .
+
+ff:prop_children sh:path ff:hasChildren ;
+       sh:minCount 1 ;
+       sh:description "The person must have at least one dependent child." .
+
+2. **Logical Relationships**
+   - Use `sh:or`, `sh:and`, or `sh:not` **only when necessary**.
+   - If a condition requires multiple factors, **separate them into distinct constraints**.
+
+   Correct logical relationship:
+   ff:prop_eligibilityCondition sh:path ff:eligibilityCondition ;
+       sh:and (
+           [ sh:path ff:kinder_18_21 ; sh:in (true) ]
+           [ sh:path ff:kinder_arbeitslos ; sh:in (true) ]
+       ) .
+       
+3. Handling Logical Dependencies with Conditional Fields**
+  - Do not assume conditions exist in the same field if they require **separate validation**.
+  - If an eligibility rule depends on multiple conditions, use **sh:or** inside an anonymous node (`[]`) to enforce dependencies.
+  - Use `sh:and` inside `sh:or` when a condition requires **multiple sub-conditions to be true simultaneously**.
+  - Create a **primary field** for the base condition (e.g., age range).
+  - Create a **secondary conditional field** that **only applies when the primary condition is met** (e.g., employment or education status).t**.
+
+   Correct Example: Expressing Logical Dependencies for Child Benefit Eligibility
+   ff:prop_kinder_berechtigt sh:path ff:kinder_berechtigt ;
+    sh:or (
+        # Condition 1: Children under 18
+        [ sh:path ff:kinder_18 ; sh:in (true) ]
+
+        # Condition 2: Children aged 18-21 and unemployed
+        [ sh:and (
+            [ sh:path ff:kinder_18_21 ; sh:in (true) ]
+            [ sh:path ff:kinder_arbeitslos ; sh:in (true) ]
+        )]
+
+        # Condition 3: Children aged 18-25 and in education
+        [ sh:and (
+            [ sh:path ff:kinder_18_25 ; sh:in (true) ]
+            [ sh:path ff:kinder_ausbildung ; sh:in (true) ]
+        )]
+    ) .
+
+   - This ensures that **child benefit eligibility** is only granted if at least one of these conditions is met:
+     1. The child is **under 18** (`ff:kinder_18`).
+     2. The child is **between 18 and 21 and unemployed** (`ff:kinder_18_21` and `ff:kinder_arbeitslos`).
+     3. The child is **between 18 and 25 and in education** (`ff:kinder_18_25` and `ff:kinder_ausbildung`).
+
+
+# FIELD USAGE EXAMPLE
+
+1. Precision in Data Field Usage
+   - Always use an existing data field if it exactly matches the needed condition.
+   - Do not overuse existing data fields if they do not match the requirement.
+   - If no suitable field exists, create a new one in the ff namespace.
+
+   Correct use of existing data fields:
+   ff:prop_aufenthaltsort sh:path ff:aufenthaltsort ;
+       sh:in (ff:aufenthaltsort-ao-innerhalb) ;
+       sh:description "The child must reside in Germany or an EU country, Iceland, Liechtenstein, Norway, or Switzerland." .
+
+   Incorrect example (reusing an existing field incorrectly):
+   ff:prop_kindergeld sh:path ff:kindergeld ;
+       sh:not [ sh:in ( true ) ] ;
+       sh:description "Child benefit cannot be received if comparable benefits are received from an international or foreign institution." .
+
+   Correct fix (creating a new field instead):
+   ff:prop_foreign_kindergeld sh:path ff:foreign_kindergeld ;
+       sh:not [ sh:in ( true ) ] ;
+       sh:description "Child benefit cannot be received if comparable benefits are received from an international or foreign institution." .
+
+2. Explicit New Field Creation Guidelines
+   - If a condition **does not fit an existing field**, create a new one.
+   - Follow **namespace conventions**: `ff:<category>_<specific_condition>`.
+   - Example:
+     ff:prop_foreign_kindergeld sh:path ff:foreign_kindergeld ;
+         sh:not [ sh:in ( true ) ] ;
+         sh:description "Child benefit cannot be received if comparable benefits are received from an international or foreign institution." .
+
+3. With existing datafield only use allowed values
+  If a field `einkommen_neu` exists with:
+  - path: ff:einkommen_neu
+  - allowed_values: ["einkommen_neu-ao-selbstaendig", "einkommen_neu-ao-angestellt"]
 
 Use it like this:
-[ sh:path ff:einkommen_neu ;
-  sh:in ( ff:einkommen_neu-ao-selbstaendig ff:einkommen_neu-ao-angestellt ) ]
-
-NOT like this:
-[ sh:path ff:einkommen_neu ;
-  sh:datatype xsd:decimal ;
-  sh:maxInclusive 1500 ]
+ff:prop_einkommen_neu sh:path ff:einkommen_neu ;
+       sh:in (ff:einkommen_neu-ao-selbstaendig ff:einkommen_neu-ao-angestellt) ;
+       sh:description "The person's income type must be either self-employed or employed." .
 
 {additional_guidelines}
 
@@ -90,8 +179,23 @@ Analyze the legal text and create appropriate SHACL property shapes within the M
 Use a succinct, lowercase name for the benefit type in the ff namespace.
 Output ONLY the Turtle syntax, no explanations."""
 
+RULE_EXTRACTION_SYSTEM_PROMPT = """
+You are a legal expert specialized in analyzing the requirements for people to receive social benefits. Your task is to:
+1. Read the provided legal text carefully
+2. Extract specific requirements
+3. Present each requirements as a clear, concise statement
+4. Focus on obligations, permissions, prohibitions, and conditions
+5. Avoid vague language and ensure each rule is specific and measurable where possible
+6. Use German as the primary language for the extracted rules
+
+Format rules as a numbered list, with one rule per line. Each rule should be:
+- Clear and unambiguous
+- Self-contained (understandable without context)
+- Actionable or measurable
+- Focused on a single requirement"""
+
 class LLMInterface:
-    def __init__(self, model: str = "gpt-4o-mini", field_registry: Optional[DataFieldRegistry] = None):
+    def __init__(self, model: str = "gpt-4o", field_registry: Optional[DataFieldRegistry] = None):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = model
         self.field_registry = field_registry
@@ -333,6 +437,7 @@ class LLMInterface:
             return g, new_fields
             
         except Exception as e:
+            print("=== Trying to fix ===")
             # If parsing fails, try one more time with a fix request
             fix_prompt = f"""The following Turtle syntax is invalid. Please fix it to be valid Turtle/SHACL:
 
@@ -455,4 +560,41 @@ Output only the fixed Turtle syntax, no explanations."""
                     )
                     new_fields.append(field)
             
-            return g, new_fields 
+            return g, new_fields
+
+    def _create_rules_generation_prompt(self, legal_text: str) -> str:
+        """Create the prompt for rule extraction."""
+        prompt = f"""Please extract rules from the following legal text:
+
+Legal Text:
+{legal_text}
+
+Extract clear, actionable rules and present them as a numbered list. Focus on:
+- Requirements and obligations
+- Permissions and rights
+- Prohibitions and restrictions
+- Conditions and qualifications
+- Time limits and deadlines
+- Specific measurements or quantities
+
+Please list the rules:"""
+        return prompt
+
+    def generate_rules(self, legal_text: str) -> List[str]:
+        """Generate a list of human-readable rules from legal text."""
+        prompt = self._create_rules_generation_prompt(legal_text)
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": RULE_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        
+        rules_text = response.choices[0].message.content
+        print("=== LLM OUTPUT ===")
+        print(rules_text)
+        
+        return rules_text

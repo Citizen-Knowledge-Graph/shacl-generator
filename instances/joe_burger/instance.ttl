@@ -1,0 +1,14 @@
+@prefix ff: <https://foerderfunke.org/default#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ff:citizen_joe_burger a ff:Citizen ;
+    ff:aufenthaltsort "aufenthaltsort-ao-ausserhalb" ;
+    ff:beruf_neu "beruf_neu-ao-selbstaendig" ;
+    ff:einkommen_familie "einkommen_familie-ao-monatsbrutto-ueber-900-600" ;
+    ff:einkommen_neu "einkommen_neu-ao-selbstaendig" ;
+    ff:erwerbsfaehig_neu "erwerbsfaehig_neu-ao-ja" ;
+    ff:geburtsdatum "1990-01-04"^^xsd:date ;
+    ff:hasAge 22 ;
+    ff:lebenssituation "lebenssituation-ao-allein" ;
+    ff:staatsbuergerschaft "staatsbuergerschaft-ao-ger" .
+

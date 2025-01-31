@@ -1,0 +1,48 @@
+@prefix ff: <https://foerderfunke.org/default#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ff:buergergeld a ff:RequirementProfile ;
+    ff:hasMainPersonShape ff:buergergeldMainPersonShape .
+
+ff:buergergeldMainPersonShape a sh:NodeShape,
+        ff:EligibilityConstraint ;
+    sh:property ff:prop_age,
+        ff:prop_application,
+        ff:prop_assets,
+        ff:prop_employment,
+        ff:prop_help_needed,
+        ff:prop_income_declaration,
+        ff:prop_residence ;
+    sh:targetClass ff:Citizen .
+
+ff:prop_age sh:description "The person must be at least 15 years old and not have reached the retirement age." ;
+    sh:minInclusive 15 ;
+    sh:path ff:hasAge .
+
+ff:prop_application sh:description "The person must submit an application for Bürgergeld at their responsible job center." ;
+    sh:in ( true ) ;
+    sh:path ff:antrag .
+
+ff:prop_assets sh:datatype xsd:decimal ;
+    sh:description "Assets are considered significant if they exceed 40,000 EUR for the first eligible person and 15,000 EUR for each additional person in the community of need." ;
+    sh:maxInclusive 40000 ;
+    sh:path ff:vermögen .
+
+ff:prop_employment sh:description "The person must be able to work at least 3 hours a day." ;
+    sh:in ( ff:erwerbsfaehig_neu-ao-ja ) ;
+    sh:path ff:erwerbsfaehig_neu .
+
+ff:prop_help_needed sh:description "The person or members of their community of need must be in need of help." ;
+    sh:in ( true ) ;
+    sh:path ff:lebenslage .
+
+ff:prop_income_declaration sh:description "The person must declare their income when applying for Bürgergeld." ;
+    sh:minCount 1 ;
+    sh:path ff:einkommen_neu .
+
+ff:prop_residence sh:description "The person must reside in Germany and have their main place of living there." ;
+    sh:in ( ff:aufenthaltsort-ao-innerhalb ) ;
+    sh:path ff:aufenthaltsort .
+

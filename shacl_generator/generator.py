@@ -73,6 +73,18 @@ class GeneratorContext:
         context.general_guidelines.extend(data['general_guidelines'])
         return context
 
+RULE_EXTRACTION_PROMPT = """Given the following legal text, extract the main rules and requirements in clear, human-readable sentences. Each rule should be concise and focus on a single requirement or constraint.
+
+Legal Text:
+{legal_text}
+
+Examples of good rule extraction:
+1. The minimum age requirement is 18 years.
+2. Applicants must provide valid identification.
+3. Applications must be submitted at least 30 days before the deadline.
+
+Please extract the rules in a similar format:"""
+
 class ShaclGenerator:
     def __init__(self, context: Optional[GeneratorContext] = None, example_store=None, field_registry: Optional[DataFieldRegistry] = None):
         self.context = context or GeneratorContext()
@@ -170,4 +182,31 @@ class ShaclGenerator:
         
     def add_general_guideline(self, guideline: str) -> None:
         """Add a guideline that should apply to all future generations."""
-        self.context.add_guideline(guideline) 
+        self.context.add_guideline(guideline)
+
+    def extract_rules(self, legal_text: str, text_id: str) -> list[str]:
+        """Extract human-readable rules from legal text."""
+        prompt = RULE_EXTRACTION_PROMPT.format(legal_text=legal_text)
+        
+        response = self.llm.generate(
+            prompt=prompt,
+            system_prompt="You are a legal expert who extracts clear, concise rules from legal texts. Focus on actionable requirements and constraints."
+        )
+        
+        # Process the response into a list of rules
+        rules = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if line and (line[0].isdigit() or line[0] == '-'):
+                # Remove leading numbers or bullets and clean up
+                rule = line.split('.', 1)[-1].strip()
+                rule = rule.lstrip('- ').strip()
+                if rule:
+                    rules.append(rule)
+        
+        return rules
+
+    def generate_rules(self, legal_text: str, text_id: str) -> List[str]:
+        """Generate human-readable rules from legal text."""
+        # Generate rules using LLM
+        return self.llm.generate_rules(legal_text)

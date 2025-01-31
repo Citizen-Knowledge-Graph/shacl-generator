@@ -23,6 +23,9 @@ class InstanceStore:
         
     def create_instance(self, instance_id: str, properties: Dict[str, Any]) -> CitizenInstance:
         """Create a new Citizen instance with the given properties."""
+        # Clean instance_id to be URI-safe
+        safe_id = instance_id.replace(" ", "_").replace("-", "_").lower()
+        
         # Validate property values against field constraints
         for field_name, value in properties.items():
             field = self.field_registry.get_field(field_name)
@@ -35,7 +38,7 @@ class InstanceStore:
         g = Graph()
         g.bind('ff', self.FF)
         
-        instance_uri = self.FF[f"citizen_{instance_id}"]
+        instance_uri = self.FF[f"citizen_{safe_id}"]
         g.add((instance_uri, RDF.type, self.FF.Citizen))
         
         for field_name, value in properties.items():
@@ -48,8 +51,8 @@ class InstanceStore:
             literal_value = self._to_literal(value, field.datatype)
             g.add((instance_uri, predicate, literal_value))
         
-        instance = CitizenInstance(instance_id, properties, g)
-        self.instances[instance_id] = instance
+        instance = CitizenInstance(safe_id, properties, g)
+        self.instances[safe_id] = instance
         self._save_instance(instance)
         return instance
     

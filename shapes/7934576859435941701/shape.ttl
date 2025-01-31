@@ -1,0 +1,75 @@
+@prefix ff: <https://foerderfunke.org/default#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ff:kinderzuschlag a ff:RequirementProfile ;
+    ff:hasMainPersonShape ff:kinderzuschlagMainPersonShape .
+
+ff:kinderzuschlagMainPersonShape a sh:NodeShape,
+        ff:EligibilityConstraint ;
+    sh:property [ sh:datatype xsd:boolean ;
+            sh:description "Parents must apply for child benefit or a comparable benefit for their child to apply for child supplement." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:kindergeld ],
+        [ sh:datatype xsd:decimal ;
+            sh:description "Significant assets are counted from 55,000 euros for 2 people and 70,000 euros for 3 people, with an increase of 15,000 euros per additional child." ;
+            sh:minInclusive 55000 ;
+            sh:path ff:vermoegen ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Parents must supplement their income with citizen's income if the livelihood is not secured despite child supplement and housing benefit." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:buergergeld ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Parents can be exempted from the fees for the daycare place if they receive child supplement." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:kita_gebuehren_befreiung ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Families with child supplement can apply for benefits for education and participation." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:bildung_teilhabe ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Study start assistance can be applied for at the first enrollment at a university if the student is under 25 years old and child supplement was received in the month before the start of training." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:studienstarthilfe ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Parents must repay overpaid child supplement after being requested to do so in writing." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:rueckzahlung ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "The child must live in the household of the parents." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:kinder ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "The child must be under 25 years old." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:kinder_18_25 ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "The child must be unmarried or not in a registered partnership." ;
+            sh:in ( true ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:unverheiratet ],
+        [ sh:description "The family's gross income must be at least 900 euros (for couples) or 600 euros (for single parents)." ;
+            sh:in ( ff:einkommen_familie-ao-monatsbrutto-ueber-900-600 ff:einkommen_familie-ao-monatsbrutto-unter-900-600 ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path ff:einkommen_familie ] ;
+    sh:targetClass ff:Citizen .
+

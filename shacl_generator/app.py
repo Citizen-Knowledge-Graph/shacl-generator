@@ -13,7 +13,10 @@ from shacl_generator.examples import ExampleStore, ExampleMapping
 from shacl_generator.generator import ShaclGenerator, GeneratorContext
 from shacl_generator.datafields import DataFieldRegistry, DataField
 from shacl_generator.instances import InstanceStore
-from shacl_generator.llm import SHACL_GENERATION_SYSTEM_PROMPT
+from shacl_generator.llm import SHACL_GENERATION_SYSTEM_PROMPT, RULE_EXTRACTION_SYSTEM_PROMPT
+from shacl_generator.shapes import ShapeStore
+
+import tiktoken
 
 # Set page config first
 st.set_page_config(
@@ -52,15 +55,20 @@ def truncate_text(text: str, max_length: int = 30000) -> str:
     # Find the last paragraph break before max_length
     truncated = text[:max_length]
     last_break = truncated.rfind('\n\n')
-    if last_break == -1:
+    if (last_break == -1):
         last_break = truncated.rfind('\n')
-    if last_break == -1:
+    if (last_break == -1):
         last_break = truncated.rfind('. ')
     
-    if last_break != -1:
+    if (last_break != -1):
         truncated = truncated[:last_break]
     
     return truncated + "\n\n[Text truncated due to length...]"
+
+def count_tokens(text: str) -> int:
+    """Count the number of tokens in a text using GPT tokenizer."""
+    encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4 encoding
+    return len(encoding.encode(text))
 
 # Initialize components
 @st.cache_resource
@@ -73,11 +81,13 @@ def init_components():
     instance_store = InstanceStore(WORKSPACE_DIR / "instances", field_registry)
     instance_store.load_all_instances()
     
+    shape_store = ShapeStore(WORKSPACE_DIR / "shapes")
+    
     context = GeneratorContext.load(CONTEXT_PATH) if CONTEXT_PATH.exists() else GeneratorContext()
     generator = ShaclGenerator(context, example_store=example_store, field_registry=field_registry)
-    return example_store, generator, field_registry, instance_store
+    return example_store, generator, field_registry, instance_store, shape_store
 
-example_store, generator, field_registry, instance_store = init_components()
+example_store, generator, field_registry, instance_store, shape_store = init_components()
 
 st.title("Legal Text to SHACL Shape Mapper")
 
@@ -86,11 +96,12 @@ with st.sidebar:
     st.header("Navigation")
     mode = st.radio(
         "Mode",
-        ["Generate SHACL", "Manage Examples", "Manage Guidelines", "Manage Data Fields", "Manage Instances", "Manage Feedback"]
+        ["Generate SHACL", "Extract Rules","Manage Shapes", "Manage Examples", "Manage Guidelines", 
+         "Manage Data Fields", "Manage Instances", "Manage Feedback"]
     )
 
 if mode == "Generate SHACL":
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 2])
     
     with col1:
         st.header("Legal Text Input")
@@ -120,6 +131,11 @@ if mode == "Generate SHACL":
                 height=300
             )
         
+        # Display token count
+        if legal_text:
+            token_count = count_tokens(legal_text)
+            st.write(f"Token count: **{token_count:,}**")
+
         if st.button("Generate SHACL Shape"):
             if legal_text:
                 with st.spinner("Generating SHACL shape..."):
@@ -145,19 +161,20 @@ if mode == "Generate SHACL":
                     builtins.print = custom_print
                     
                     try:
-                        # Get the prompt first
-                        prompt = generator.llm._create_generation_prompt(
+                        # Get the prompts
+                        shacl_prompt = generator.llm._create_generation_prompt(
                             legal_text=legal_text,
                             examples=generator._get_relevant_examples(text_id),
                             feedback_history=generator._get_relevant_feedback(text_id),
                             guidelines=generator.context.general_guidelines
                         )
                         
-                        # Store prompt in session state
-                        st.session_state['current_prompt'] = prompt
+                        # Store prompts in session state
+                        st.session_state['current_prompt'] = shacl_prompt
                         
-                        # Generate the shape
+                        # Generate the shape and extract rules
                         shape, new_fields = generator.generate_shape(legal_text, text_id)
+                        
                         st.session_state['current_shape'] = shape
                         st.session_state['current_text_id'] = text_id
                         
@@ -168,6 +185,14 @@ if mode == "Generate SHACL":
                         
                         # Store debug output
                         st.session_state['debug_output'] = "\n".join(debug_output)
+                        
+                        # Store the generated shape
+                        shape_store.add_shape(
+                            shape_id=text_id,
+                            legal_text=legal_text,
+                            graph=shape,
+                            description="Generated from legal text"
+                        )
                         
                         st.success("SHACL shape generated!")
                     finally:
@@ -271,6 +296,155 @@ if mode == "Generate SHACL":
             with tab5:
                 if 'debug_output' in st.session_state:
                     st.text(st.session_state['debug_output'])
+
+elif mode == "Extract Rules":
+    col1, col2 = st.columns([2, 2])
+    
+    with col1:
+        st.header("Legal Text Input")
+        
+        # Add file upload option
+        uploaded_file = st.file_uploader("Upload PDF or paste text", type=['pdf', 'txt'])
+        
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.type == "application/pdf":
+                    legal_text = extract_text_from_pdf(uploaded_file)
+                else:  # txt file
+                    legal_text = uploaded_file.read().decode()
+                
+                # Show extracted text with option to edit
+                legal_text = st.text_area(
+                    "Review and edit extracted text if needed",
+                    value=legal_text,
+                    height=300
+                )
+            except Exception as e:
+                st.error(f"Error processing file: {str(e)}")
+                legal_text = ""
+        else:
+            legal_text = st.text_area(
+                "Or paste legal text directly",
+                height=300
+            )
+        
+        # Display token count
+        if legal_text:
+            token_count = count_tokens(legal_text)
+            st.write(f"Token count: **{token_count:,}**")
+
+        if st.button("Generate rules"):
+            if legal_text:
+                with st.spinner("Generating rules..."):
+                    # Generate unique ID for the text
+                    text_id = str(hash(legal_text))
+                    
+                    # Create debug container
+                    debug_container = st.empty()
+                    
+                    # Store old print function
+                    old_print = print
+                    debug_output = []
+                    
+                    # Create custom print function
+                    def custom_print(*args):
+                        message = " ".join(map(str, args))
+                        debug_output.append(message)
+                        debug_container.text("\n".join(debug_output))
+                        old_print(*args)  # Still print to console
+                    
+                    # Replace print function
+                    import builtins
+                    builtins.print = custom_print
+                    
+                    try:
+                        # Get the prompts
+                        rules_prompt = generator.llm._create_rules_generation_prompt(
+                            legal_text=legal_text
+                        )
+                        
+                        # Store prompts in session state
+                        st.session_state['current_rules_prompt'] = rules_prompt
+                        
+                        # Generate the shape and extract rules
+                        rules = generator.generate_rules(legal_text, text_id)
+                        
+                        st.session_state['current_rules'] = rules
+                        st.session_state['current_text_id'] = text_id
+                        
+                        # Store debug output
+                        st.session_state['debug_output'] = "\n".join(debug_output)                
+                        
+                        st.success("Rules generated!")
+                    finally:
+                        # Restore print function
+                        builtins.print = old_print
+            else:
+                st.warning("Please provide some legal text first.")
+
+    with col2:
+        st.header("Extracted rules")
+        
+        if 'current_rules' in st.session_state:
+            # Add tabs for shape, prompts, validation, and debug
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "Rules", 
+                "System Prompt", 
+                "Generation Prompt", 
+                "Debug Output"
+            ])
+            
+            with tab1:
+                shape_text = st.session_state['current_rules']
+                st.text_area("Extracted Rules", shape_text, height=300)
+            
+            with tab2:
+                st.text_area("System Prompt", 
+                            RULE_EXTRACTION_SYSTEM_PROMPT,
+                            height=500)
+            
+            with tab3:
+                st.text_area("Generation Prompt", 
+                            st.session_state['current_rules_prompt'],
+                            height=500)
+            
+            with tab4:
+                if 'debug_output' in st.session_state:
+                    st.text(st.session_state['debug_output'])        
+
+elif mode == "Manage Shapes":
+    st.header("SHACL Shape Management")
+    
+    # View existing shapes
+    st.subheader("Existing Shapes")
+    for shape_id, shape in shape_store.shapes.items():
+        with st.expander(f"Shape: {shape_id}"):
+            col1, col2 = st.columns([5,1])
+            
+            with col1:
+                st.text(f"Created: {shape.created_at}")
+                st.text(f"Updated: {shape.updated_at}")
+                if shape.description:
+                    st.text(f"Description: {shape.description}")
+            
+            with col2:
+                if st.button("🗑️ Delete", key=f"delete_shape_{shape_id}"):
+                    shape_store.delete_shape(shape_id)
+                    st.success(f"Shape {shape_id} deleted!")
+                    st.rerun()
+            
+            # Show legal text and shape
+            st.text_area("Legal Text", shape.legal_text, height=200, key=f"legal_text_{shape_id}")
+            st.text_area("SHACL Shape", shape.graph.serialize(format='turtle'), height=300, key=f"shape_{shape_id}")
+            
+            # Add update functionality
+            new_description = st.text_input("New Description", 
+                                          value=shape.description or "", 
+                                          key=f"description_{shape_id}")
+            if st.button("Update Description", key=f"update_shape_{shape_id}"):
+                shape_store.update_shape(shape_id, shape.graph, new_description)
+                st.success("Shape updated!")
+                st.rerun()
 
 elif mode == "Manage Examples":
     st.header("Example Management")
@@ -649,4 +823,4 @@ else:  # Manage Data Fields mode
             
             # Show constraints
             if field.constraints:
-                st.json(field.constraints) 
+                st.json(field.constraints)

@@ -1,0 +1,41 @@
+@prefix ff: <https://foerderfunke.org/default#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ff:buergergeld a ff:RequirementProfile ;
+    ff:hasMainPersonShape ff:buergergeldMainPersonShape .
+
+ff:buergergeldMainPersonShape a sh:NodeShape,
+        ff:EligibilityConstraint ;
+    sh:property ff:prop_age,
+        ff:prop_assets,
+        ff:prop_income_declaration,
+        ff:prop_primary_residence,
+        ff:prop_residence,
+        ff:prop_work_ability ;
+    sh:targetClass ff:Citizen .
+
+ff:prop_age sh:description "The person must be at least 15 years old and not have reached the retirement age." ;
+    sh:maxInclusive 67 ;
+    sh:minInclusive 15 ;
+    sh:path ff:hasAge .
+
+ff:prop_assets sh:description "During the first year of receiving Bürgergeld, only significant assets are considered, defined as exceeding €40,000 for the first eligible person and €15,000 for each additional person in the household." ;
+    sh:path ff:vermoegen .
+
+ff:prop_income_declaration sh:description "The person must declare their income when applying for Bürgergeld." ;
+    sh:minCount 1 ;
+    sh:path ff:einkommen_neu .
+
+ff:prop_primary_residence sh:description "Self-occupied residential property is not considered an asset during the first year if it does not exceed 140 square meters for a house or 130 square meters for an apartment." ;
+    sh:path ff:primary_residence .
+
+ff:prop_residence sh:description "The person must reside in Germany and have their primary place of living there." ;
+    sh:in ( ff:aufenthaltsort-ao-innerhalb ) ;
+    sh:path ff:aufenthaltsort .
+
+ff:prop_work_ability sh:description "The person must be able to work at least 3 hours per day." ;
+    sh:in ( ff:erwerbsfaehig_neu-ao-ja ) ;
+    sh:path ff:erwerbsfaehig_neu .
+

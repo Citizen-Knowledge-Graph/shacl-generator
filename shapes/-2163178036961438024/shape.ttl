@@ -1,0 +1,37 @@
+@prefix ff: <https://foerderfunke.org/default#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ff:kindergeld a ff:RequirementProfile ;
+    ff:hasMainPersonShape ff:kindergeldMainPersonShape .
+
+ff:kindergeldMainPersonShape a sh:NodeShape,
+        ff:EligibilityConstraint ;
+    sh:property ff:prop_aufenthaltsort,
+        ff:prop_foreign_kindergeld,
+        ff:prop_kinder_berechtigt,
+        ff:prop_kindergeld ;
+    sh:targetClass ff:Citizen .
+
+ff:prop_aufenthaltsort sh:description "The child must reside in Germany, an EU country, Iceland, Liechtenstein, Norway, or Switzerland." ;
+    sh:in ( ff:aufenthaltsort-ao-innerhalb ) ;
+    sh:path ff:aufenthaltsort .
+
+ff:prop_foreign_kindergeld sh:description "Child benefit is not granted if comparable benefits are received from an international or foreign institution." ;
+    sh:not [ sh:in ( true ) ] ;
+    sh:path ff:foreign_kindergeld .
+
+ff:prop_kinder_berechtigt sh:description "Child benefit eligibility is based on the child's age and status: under 18, between 18 and 21 and unemployed, or between 18 and 25 and in education." ;
+    sh:or ( [ sh:in ( true ) ;
+                sh:path ff:kinder_unter_18 ] [ sh:and ( [ sh:in ( true ) ;
+                            sh:path ff:kinder_18_21 ] [ sh:in ( true ) ;
+                            sh:path ff:kinder_arbeitslos ] ) ] [ sh:and ( [ sh:in ( true ) ;
+                            sh:path ff:kinder_18_25 ] [ sh:in ( true ) ;
+                            sh:path ff:kinder_ausbildung ] ) ] ) ;
+    sh:path ff:kinder_berechtigt .
+
+ff:prop_kindergeld sh:description "Child benefit is not granted if comparable benefits are received from a national source." ;
+    sh:not [ sh:in ( true ) ] ;
+    sh:path ff:kindergeld .
+
