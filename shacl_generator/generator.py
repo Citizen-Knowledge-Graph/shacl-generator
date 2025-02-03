@@ -126,8 +126,6 @@ class ShaclGenerator:
         """Generate a SHACL shape from legal text."""
         # Initialize the graph with standard prefixes
         g = Graph()
-        print("=== GENERATOR BEFORE ===")
-        print("Namespaces:", list(g.namespaces()))
         
         # Bind namespaces in the order we want them to appear
         g.bind('ff', self.FF)  # Bind ff first to make it the preferred namespace
@@ -135,9 +133,6 @@ class ShaclGenerator:
         g.bind('xsd', XSD)
         g.bind('rdfs', RDFS)
         g.bind('rdf', self.RDF)
-        
-        print("=== GENERATOR AFTER BINDING ===")
-        print("Namespaces:", list(g.namespaces()))
 
         # Get examples and feedback for context
         examples = self._get_relevant_examples(text_id)
@@ -160,6 +155,20 @@ class ShaclGenerator:
                 self.field_registry.add_field(field)
         
         return g, new_fields
+    
+    def deploy_second_agent(self, shape: Graph) -> Tuple[Graph, List[DataField]]:
+        """Deploy a second agent to generate a SHACL shape from legal text."""
+        
+        # Improve the shape using LLM
+        improved_graph, new_fields = self.llm.citique_agent(current_shape=shape)
+        
+        # Add any new fields to the registry
+        if self.field_registry and new_fields:
+            for field in new_fields:
+                self.field_registry.add_field(field)
+        
+        return improved_graph, new_fields
+    
         
     def improve_shape(self, shape: Graph, feedback: str, text_id: str) -> Tuple[Graph, List[DataField]]:
         """Improve a SHACL shape based on feedback."""

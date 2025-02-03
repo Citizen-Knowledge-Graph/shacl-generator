@@ -32,7 +32,6 @@ Your task is to complete the SHACL shapes graph below from texts describing the 
 
 3. Output ONLY the Turtle syntax, no explanations or markdown.
 
-
 # STRUCTURAL FORMAT OF PRIMARY SHAPE
 1. Define a `RequirementProfile` with a succinct name in the `ff` namespace:
    Example: ff:buergergeld a ff:RequirementProfile .
@@ -53,9 +52,7 @@ ff:buergergeld a ff:RequirementProfile ;
 ff:buergergeldMainPersonShape a sh:NodeShape, ff:EligibilityConstraint ;
     sh:targetClass ff:Citizen .
 
-
 # STRUCTURAL FORMAT OF PROPERTY CONSTRAINTS
-
 1. Define each condition as a separate `sh:property` block with a **named URI instead of a blank node**.
 2. Include cardinality constraints for each property:
    - Use `sh:minCount 1` for required properties.
@@ -76,9 +73,7 @@ ff:prop_kindergeld sh:path ff:kindergeld ;
     sh:not [ sh:in (true) ] ;
     sh:description "Child benefit cannot be received if comparable benefits are received from an international or foreign institution." .
 
-
 # LOGICAL HANDLING OF ELIGIBILITY CONDITIONS
-
 1. Use distinct `sh:property` constraints for separate eligibility conditions. Do not group unrelated conditions.
 
 Example of separate constraints:
@@ -100,41 +95,77 @@ ff:prop_children sh:path ff:hasChildren ;
            [ sh:path ff:kinder_18_21 ; sh:in (true) ]
            [ sh:path ff:kinder_arbeitslos ; sh:in (true) ]
        ) .
+
+3. **Handling Nested Conditions**
+   - For conditions where one property depends on another (e.g., age and asset limits), use **`sh:qualifiedValueShape`** or **`sh:node`** to explicitly define the dependency.
+   - Always group dependent constraints together using `sh:and` or `sh:or` inside a `sh:node` or `sh:qualifiedValueShape`.
+
+   Correct Example: Nested Conditions for Asset Limits Based on Age
+   ff:prop_assets sh:path ff:assetsValue ;
+       sh:datatype xsd:decimal ;
+       sh:or (
+           [ sh:description "The student's assets must not exceed 15,000 EUR if under 30 years old." ;
+             sh:maxInclusive 15000 ;
+             sh:property [
+                 sh:path ff:hasAge ;
+                 sh:maxExclusive 30 ;
+             ]
+           ]
+           [ sh:description "The student's assets must not exceed 45,000 EUR if 30 years or older." ;
+             sh:maxInclusive 45000 ;
+             sh:property [
+                 sh:path ff:hasAge ;
+                 sh:minInclusive 30 ;
+             ]
+           ]
+       ) .
        
-3. Handling Logical Dependencies with Conditional Fields**
-  - Do not assume conditions exist in the same field if they require **separate validation**.
-  - If an eligibility rule depends on multiple conditions, use **sh:or** inside an anonymous node (`[]`) to enforce dependencies.
-  - Use `sh:and` inside `sh:or` when a condition requires **multiple sub-conditions to be true simultaneously**.
-  - Create a **primary field** for the base condition (e.g., age range).
-  - Create a **secondary conditional field** that **only applies when the primary condition is met** (e.g., employment or education status).t**.
+   sh:or (
+    [
+      sh:description "If the student is under 30, their assets must not exceed 15,000 EUR." ;
+      sh:property [
+        sh:path ff:hasAge ;
+        sh:maxExclusive 30 ;
+      ] ;
+      sh:property [
+        sh:path ff:assetValue ;
+        sh:datatype xsd:decimal ;
+        sh:maxInclusive 15000 ;
+      ]
+    ]
+    [
+      sh:description "If the student is 30 or older, their assets must not exceed 45,000 EUR." ;
+      sh:property [
+        sh:path ff:hasAge ;
+        sh:minInclusive 30 ;
+      ] ;
+      sh:property [
+        sh:path ff:assetValue ;
+        sh:datatype xsd:decimal ;
+        sh:maxInclusive 45000 ;
+      ]
+    ]
+  ) .    
 
-   Correct Example: Expressing Logical Dependencies for Child Benefit Eligibility
-   ff:prop_kinder_berechtigt sh:path ff:kinder_berechtigt ;
-    sh:or (
-        # Condition 1: Children under 18
-        [ sh:path ff:kinder_18 ; sh:in (true) ]
+4. **Avoid Overlapping Conditions**
+   - Ensure that conditions in `sh:or` or `sh:and` are mutually exclusive or clearly defined to avoid ambiguity.
+   - Use `sh:description` to clarify the intent of each condition.
 
-        # Condition 2: Children aged 18-21 and unemployed
-        [ sh:and (
-            [ sh:path ff:kinder_18_21 ; sh:in (true) ]
-            [ sh:path ff:kinder_arbeitslos ; sh:in (true) ]
-        )]
+5. **Use `sh:qualifiedValueShape` for Dependent Constraints**
+   - If a condition depends on another property, use `sh:qualifiedValueShape` to define the dependency.
 
-        # Condition 3: Children aged 18-25 and in education
-        [ sh:and (
-            [ sh:path ff:kinder_18_25 ; sh:in (true) ]
-            [ sh:path ff:kinder_ausbildung ; sh:in (true) ]
-        )]
-    ) .
-
-   - This ensures that **child benefit eligibility** is only granted if at least one of these conditions is met:
-     1. The child is **under 18** (`ff:kinder_18`).
-     2. The child is **between 18 and 21 and unemployed** (`ff:kinder_18_21` and `ff:kinder_arbeitslos`).
-     3. The child is **between 18 and 25 and in education** (`ff:kinder_18_25` and `ff:kinder_ausbildung`).
-
+   Correct Example:
+   ff:prop_independent_bafoeg sh:property [
+       sh:path ff:apprenticeshipCompleted ;
+       sh:qualifiedValueShape [
+           sh:path ff:yearsWorked ;
+           sh:minInclusive 3 ;
+       ] ;
+       sh:qualifiedMinCount 1 ;
+       sh:message "If an apprenticeship was completed, the student must have worked at least 3 years."
+   ] .
 
 # FIELD USAGE EXAMPLE
-
 1. Precision in Data Field Usage
    - Always use an existing data field if it exactly matches the needed condition.
    - Do not overuse existing data fields if they do not match the requirement.
@@ -377,33 +408,10 @@ class LLMInterface:
         
         return fixed_content
     
-    def generate_shape(
-        self,
-        legal_text: str,
-        examples: List[Dict] = None,
-        feedback_history: List[Dict] = None,
-        guidelines: List[str] = None
-    ) -> Tuple[Graph, List[DataField]]:
-        """Generate a SHACL shape from legal text."""
-        prompt = self._create_generation_prompt(
-            legal_text=legal_text,
-            examples=examples,
-            feedback_history=feedback_history,
-            guidelines=guidelines
-        )
-        
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SHACL_GENERATION_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2
-        )
-        
-        # Extract and clean up the SHACL shape from the response
-        shape_text = response.choices[0].message.content
-        turtle_content = self._extract_turtle_content(shape_text)
+    def _process_llm_response(self, response_text: str) -> Tuple[Graph, List[DataField]]:
+        """Process LLM response and return a Graph and any new fields."""
+        # Extract turtle content from response
+        turtle_content = self._extract_turtle_content(response_text)
         print("=== LLM OUTPUT ===")
         print(turtle_content)
         print("================")
@@ -411,9 +419,16 @@ class LLMInterface:
         try:
             # Create graph and bind namespaces BEFORE parsing
             g = Graph()
+            g.bind('ff', "https://foerderfunke.org/default#")
+            g.bind('sh', "http://www.w3.org/ns/shacl#")
+            g.bind('xsd', "http://www.w3.org/2001/XMLSchema#")
+            g.bind('rdfs', "http://www.w3.org/2000/01/rdf-schema#")
+            g.bind('rdf', "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+            
             print("=== BEFORE PARSING ===")
             print("Namespaces:", list(g.namespaces()))
             
+            # Parse the content
             g.parse(data=turtle_content, format='turtle')
             
             print("=== AFTER PARSING ===")
@@ -456,6 +471,11 @@ Output only the fixed Turtle syntax, no explanations."""
             
             fixed_content = self._extract_turtle_content(fix_response.choices[0].message.content)
             g = Graph()
+            g.bind('ff', "https://foerderfunke.org/default#")
+            g.bind('sh', "http://www.w3.org/ns/shacl#")
+            g.bind('xsd', "http://www.w3.org/2001/XMLSchema#")
+            g.bind('rdfs', "http://www.w3.org/2000/01/rdf-schema#")
+            g.bind('rdf', "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
             g.parse(data=fixed_content, format='turtle')
             
             # Extract any new fields from the fixed content
@@ -471,7 +491,33 @@ Output only the fixed Turtle syntax, no explanations."""
                     new_fields.append(field)
             
             return g, new_fields
-    
+
+    def generate_shape(
+        self,
+        legal_text: str,
+        examples: List[Dict] = None,
+        feedback_history: List[Dict] = None,
+        guidelines: List[str] = None
+    ) -> Tuple[Graph, List[DataField]]:
+        """Generate a SHACL shape from legal text."""
+        prompt = self._create_generation_prompt(
+            legal_text=legal_text,
+            examples=examples,
+            feedback_history=feedback_history,
+            guidelines=guidelines
+        )
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SHACL_GENERATION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        
+        return self._process_llm_response(response.choices[0].message.content)
+
     def improve_shape(
         self,
         current_shape: Graph,
@@ -496,71 +542,7 @@ Output only the fixed Turtle syntax, no explanations."""
             temperature=0.2
         )
         
-        # Extract and clean up the improved SHACL shape
-        shape_text = response.choices[0].message.content
-        turtle_content = self._extract_turtle_content(shape_text)
-        fixed_turtle = self._validate_and_fix_turtle(turtle_content)
-        
-        try:
-            # Create graph with bound namespaces
-            g = Graph()
-            g.bind('ff', "https://foerderfunke.org/default#")
-            g.bind('sh', "http://www.w3.org/ns/shacl#")
-            g.bind('xsd', "http://www.w3.org/2001/XMLSchema#")
-            g.bind('rdfs', "http://www.w3.org/2000/01/rdf-schema#")
-            g.bind('rdf', "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-            
-            # Parse the improved shape into the graph
-            g.parse(data=fixed_turtle, format='turtle')
-            
-            # Extract any new fields
-            new_fields = []
-            if self.field_registry:
-                for name, datatype, description in self._extract_new_fields(fixed_turtle):
-                    field = DataField(
-                        name=name,
-                        path=f"ex:{name}",
-                        datatype=f"xsd:{datatype}",
-                        description=description
-                    )
-                    new_fields.append(field)
-            
-            return g, new_fields
-            
-        except Exception as e:
-            # If parsing fails, try one more time with a fix request
-            fix_prompt = f"""The following Turtle syntax is invalid. Please fix it to be valid Turtle/SHACL:
-
-{fixed_turtle}
-
-Output only the fixed Turtle syntax, no explanations."""
-            
-            fix_response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a Turtle/SHACL syntax expert. Fix the syntax issues in the provided Turtle content."},
-                    {"role": "user", "content": fix_prompt}
-                ],
-                temperature=0.1
-            )
-            
-            fixed_content = self._extract_turtle_content(fix_response.choices[0].message.content)
-            g = Graph()
-            g.parse(data=fixed_content, format='turtle')
-            
-            # Extract any new fields from the fixed content
-            new_fields = []
-            if self.field_registry:
-                for name, datatype, description in self._extract_new_fields(fixed_content):
-                    field = DataField(
-                        name=name,
-                        path=f"ex:{name}",
-                        datatype=f"xsd:{datatype}",
-                        description=description
-                    )
-                    new_fields.append(field)
-            
-            return g, new_fields
+        return self._process_llm_response(response.choices[0].message.content)
 
     def _create_rules_generation_prompt(self, legal_text: str) -> str:
         """Create the prompt for rule extraction."""
@@ -598,3 +580,85 @@ Please list the rules:"""
         print(rules_text)
         
         return rules_text
+    
+    
+    def citique_agent(self, current_shape: Graph) -> Tuple[Graph, List[DataField]]:
+        """Critique a SHACL shape and suggest improvements."""
+        prompt = f"""
+        Task:  
+        Review the following SHACL shape and ensure that all **conditional dependencies** between properties are properly expressed using `sh:or`, `sh:and`, and `sh:not`.  
+
+        Requirements:  
+        1. **Explicit Conditional Logic**:  
+        - If a condition depends on another property’s value (e.g., a requirement applies only under certain circumstances), model the dependency explicitly using `sh:and`, `sh:or`, or `sh:not`.  
+        - Pay special attention to cases where multiple conditions must be met simultaneously (`sh:and`) or where alternative conditions exist (`sh:or`).  
+
+        2. **Nested Conditions**:  
+        - Ensure that nested conditions are properly structured. For example:  
+            - Use `sh:or` to express **alternative conditions** (e.g., "either X or Y must be true").  
+            - Use `sh:and` to express **combined conditions** (e.g., "both X and Y must be true").  
+            - Use `sh:not` to express **disqualifying conditions** (e.g., "X must not be true").  
+
+        3. **Consistency**:  
+        - Ensure that all property constraints follow a consistent structure (e.g., using `sh:minCount`, `sh:maxCount`, or `sh:hasValue` uniformly).  
+        - Do not change the overall structure of the SHACL shape (e.g., properties should remain listed under `sh:property`). Only update the constraints where necessary.  
+
+        4. **Examples of Nested Conditions**:  
+        - **Example 1**: A property requiring **either of two values** should use `sh:or`:  
+            ```turtle
+            sh:or (
+                [ sh:hasValue true ; sh:path ff:conditionA ]
+                [ sh:hasValue true ; sh:path ff:conditionB ]
+            )
+            ```  
+        - **Example 2**: A property requiring **both a condition and a dependency** should use `sh:and`:  
+            ```turtle
+            sh:and (
+                [ sh:hasValue true ; sh:path ff:conditionA ]
+                [ sh:hasValue false ; sh:path ff:disqualifyingCondition ]
+            )
+            ```  
+        - **Example 3**: A property that **only applies under certain conditions** should use `sh:not` or nested `sh:or`:  
+            ```turtle
+            sh:or (
+                [ sh:not [ sh:hasValue true ; sh:path ff:disqualifyingCondition ] ]
+                [ sh:hasValue true ; sh:path ff:specialCondition ]
+            )
+            ```  
+        - **Example 4**: A property that **depends on another property** should use `sh:and` and `sh:or` to express the dependency:
+           ```turtle
+            sh:or (
+                [
+                    sh:description "Students under 25 must have a GPA of at least 3.5." ;
+                    sh:and (
+                        [ sh:path ff:age ; sh:maxExclusive 25 ]
+                        [ sh:path ff:gpa ; sh:minInclusive 3.5 ]
+                    )
+                ]
+                [
+                    sh:description "Students 25 or older must have a GPA of at least 3.8." ;
+                    sh:and (
+                        [ sh:path ff:age ; sh:minInclusive 25 ]
+                        [ sh:path ff:gpa ; sh:minInclusive 3.8 ]
+                    )
+                ]
+            )
+
+        5. **Output Format**:  
+        - Return the updated SHACL shape in **Turtle syntax**.  
+        - Include comments (`#`) to explain any changes made to the original shape.  
+
+        CURRENT SHAPE:  
+        {current_shape.serialize(format='turtle')}
+        """
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are an AI specialized in critiquing SHACL shapes and suggesting improvements."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        
+        return self._process_llm_response(response.choices[0].message.content)

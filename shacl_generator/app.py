@@ -70,6 +70,13 @@ def count_tokens(text: str) -> int:
     encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4 encoding
     return len(encoding.encode(text))
 
+# Create custom print function
+def custom_print(*args):
+    message = " ".join(map(str, args))
+    debug_output.append(message)
+    debug_container.text("\n".join(debug_output))
+    old_print(*args)  # Still print to console
+
 # Initialize components
 @st.cache_resource
 def init_components():
@@ -103,6 +110,10 @@ with st.sidebar:
 if mode == "Generate SHACL":
     col1, col2 = st.columns([2, 2])
     
+    # Initialize session state if not already present
+    if 'raw_rules_text' not in st.session_state:
+        st.session_state.raw_rules_text = ""
+    
     with col1:
         st.header("Legal Text Input")
         
@@ -120,7 +131,8 @@ if mode == "Generate SHACL":
                 legal_text = st.text_area(
                     "Review and edit extracted text if needed",
                     value=legal_text,
-                    height=300
+                    height=300,
+                    key="uploaded_shacl_area"  # Added unique key
                 )
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
@@ -128,22 +140,30 @@ if mode == "Generate SHACL":
         else:
             legal_text = st.text_area(
                 "Or paste legal text directly",
-                height=300
+                height=300,
+                key="uploaded_shacl_area"  # Added unique key                
             )
         
-        # Display token count
-        if legal_text:
-            token_count = count_tokens(legal_text)
-            st.write(f"Token count: **{token_count:,}**")
-
-        if st.button("Generate SHACL Shape"):
+        # Display token count and generate button side by side
+        col_tokens, col_button = st.columns([3,1])
+        
+        # Create debug container before handling button
+        debug_container = st.empty()
+        debug_output = []
+        
+        with col_tokens:
+            if legal_text:
+                token_count = count_tokens(legal_text)
+                st.write(f"Token count: **{token_count:,}**")
+        
+        with col_button:
+            generate_button = st.button("Generate Shape")
+        
+        if generate_button:
             if legal_text:
                 with st.spinner("Generating SHACL shape..."):
                     # Generate unique ID for the text
                     text_id = str(hash(legal_text))
-                    
-                    # Create debug container
-                    debug_container = st.empty()
                     
                     # Store old print function
                     old_print = print
@@ -201,6 +221,7 @@ if mode == "Generate SHACL":
             else:
                 st.warning("Please provide some legal text first.")
     
+    
     with col2:
         st.header("Generated SHACL Shape")
         
@@ -217,6 +238,21 @@ if mode == "Generate SHACL":
             with tab1:
                 shape_text = st.session_state['current_shape'].serialize(format='turtle')
                 st.text_area("SHACL Shape", shape_text, height=300)
+                
+                # Deploy second agent to improve shape
+                if st.button("Deploy Nested Conditions Agent"):
+                    with st.spinner("Critiquing SHACL shape..."):
+                        improved_shape, new_fields = generator.deploy_second_agent(
+                            st.session_state['current_shape']
+                        )
+                                                
+                        if new_fields:
+                            st.info(f"Added {len(new_fields)} new data fields")
+                            for field in new_fields:
+                                st.write(f"- {field.name} ({field.datatype})")
+                        
+                        st.success("Shape improved by critique agent!")
+                        st.rerun()
                 
                 # Add feedback section under the shape
                 feedback = st.text_area(
@@ -304,70 +340,72 @@ elif mode == "Extract Rules":
         st.header("Legal Text Input")
         
         # Add file upload option
-        uploaded_file = st.file_uploader("Upload PDF or paste text", type=['pdf', 'txt'])
+        uploaded_raw_file = st.file_uploader("Upload PDF or paste text", type=['pdf', 'txt'])
         
-        if uploaded_file is not None:
+        if uploaded_raw_file is not None:
             try:
-                if uploaded_file.type == "application/pdf":
-                    legal_text = extract_text_from_pdf(uploaded_file)
+                if uploaded_raw_file.type == "application/pdf":
+                    raw_rules_text = extract_text_from_pdf(uploaded_raw_file)
                 else:  # txt file
-                    legal_text = uploaded_file.read().decode()
+                    raw_rules_text = uploaded_raw_file.read().decode()
                 
                 # Show extracted text with option to edit
-                legal_text = st.text_area(
+                raw_rules_text = st.text_area(
                     "Review and edit extracted text if needed",
-                    value=legal_text,
-                    height=300
+                    value=raw_rules_text,
+                    height=300,
+                    key="uploaded_rules_area"  # Added unique key                    
                 )
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
-                legal_text = ""
+                raw_rules_text = ""
         else:
-            legal_text = st.text_area(
+            raw_rules_text = st.text_area(
                 "Or paste legal text directly",
-                height=300
+                height=300,
+                key="uploaded_rules_area"  # Added unique key
             )
-        
-        # Display token count
-        if legal_text:
-            token_count = count_tokens(legal_text)
-            st.write(f"Token count: **{token_count:,}**")
 
-        if st.button("Generate rules"):
-            if legal_text:
-                with st.spinner("Generating rules..."):
-                    # Generate unique ID for the text
-                    text_id = str(hash(legal_text))
-                    
-                    # Create debug container
-                    debug_container = st.empty()
-                    
+
+        # Display token count and generate button side by side
+        col_tokens, col_button = st.columns([3,1])
+        
+        # Create debug container before handling button
+        debug_container = st.empty()
+        debug_output = []
+        
+        with col_tokens:
+            if raw_rules_text:
+                token_count = count_tokens(raw_rules_text)
+                st.write(f"Token count: **{token_count:,}**")
+        
+        with col_button:
+            generate_button = st.button("Generate rules")
+        
+        if generate_button:
+            if raw_rules_text:
+                with st.spinner("Generating rules..."):  # Spinner now at column level
                     # Store old print function
                     old_print = print
-                    debug_output = []
-                    
-                    # Create custom print function
-                    def custom_print(*args):
-                        message = " ".join(map(str, args))
-                        debug_output.append(message)
-                        debug_container.text("\n".join(debug_output))
-                        old_print(*args)  # Still print to console
-                    
-                    # Replace print function
-                    import builtins
-                    builtins.print = custom_print
                     
                     try:
+                        # Replace print function
+                        import builtins
+                        builtins.print = custom_print
+                        
+                        # Generate unique ID for the text
+                        text_id = str(hash(raw_rules_text))
+                        
                         # Get the prompts
                         rules_prompt = generator.llm._create_rules_generation_prompt(
-                            legal_text=legal_text
+                            legal_text=raw_rules_text
                         )
                         
                         # Store prompts in session state
                         st.session_state['current_rules_prompt'] = rules_prompt
                         
-                        # Generate the shape and extract rules
-                        rules = generator.generate_rules(legal_text, text_id)
+                        # Generate rules
+                        rules = generator.generate_rules(raw_rules_text, text_id)
                         
                         st.session_state['current_rules'] = rules
                         st.session_state['current_text_id'] = text_id
