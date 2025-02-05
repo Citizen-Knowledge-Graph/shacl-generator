@@ -412,7 +412,7 @@ class LLMInterface:
         """Process LLM response and return a Graph and any new fields."""
         # Extract turtle content from response
         turtle_content = self._extract_turtle_content(response_text)
-        print("=== LLM OUTPUT ===")
+        print("=== LLM OUTPUT ===")  # Use custom print
         print(turtle_content)
         print("================")
         
@@ -546,20 +546,27 @@ Output only the fixed Turtle syntax, no explanations."""
 
     def _create_rules_generation_prompt(self, legal_text: str) -> str:
         """Create the prompt for rule extraction."""
-        prompt = f"""Please extract rules from the following legal text:
+        prompt = f"""
+        Copy
+        Please extract eligibility criteria relevant to submitting an application from the following legal text:
 
-Legal Text:
-{legal_text}
+        Legal Text:  
+        {legal_text}  
 
-Extract clear, actionable rules and present them as a numbered list. Focus on:
-- Requirements and obligations
-- Permissions and rights
-- Prohibitions and restrictions
-- Conditions and qualifications
-- Time limits and deadlines
-- Specific measurements or quantities
+        Extract clear, actionable rules and present them with concise titles. Include only rules that directly impact the ability to submit an application.  
 
-Please list the rules:"""
+        Format the rules as follows:  
+        - Add one blank line between each rule.  
+        - Provide a short, descriptive title for each rule.  
+
+        Focus on:  
+        - Requirements and obligations  
+        - Conditions and qualifications  
+        - Time limits and deadlines  
+        - Specific measurements or quantities  
+
+        Please list the rules:   
+        """       
         return prompt
 
     def generate_rules(self, legal_text: str) -> List[str]:
@@ -582,7 +589,7 @@ Please list the rules:"""
         return rules_text
     
     
-    def citique_agent(self, current_shape: Graph) -> Tuple[Graph, List[DataField]]:
+    def critique_agent(self, current_shape: Graph) -> Tuple[Graph, List[DataField]]:
         """Critique a SHACL shape and suggest improvements."""
         prompt = f"""
         Task:  
@@ -649,7 +656,7 @@ Please list the rules:"""
         - Include comments (`#`) to explain any changes made to the original shape.  
 
         CURRENT SHAPE:  
-        {current_shape.serialize(format='turtle')}
+        {current_shape}
         """
         
         response = self.client.chat.completions.create(

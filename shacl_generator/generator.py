@@ -160,7 +160,7 @@ class ShaclGenerator:
         """Deploy a second agent to generate a SHACL shape from legal text."""
         
         # Improve the shape using LLM
-        improved_graph, new_fields = self.llm.citique_agent(current_shape=shape)
+        improved_graph, new_fields = self.llm.critique_agent(current_shape=shape)
         
         # Add any new fields to the registry
         if self.field_registry and new_fields:
@@ -215,7 +215,7 @@ class ShaclGenerator:
         
         return rules
 
-    def generate_rules(self, legal_text: str, text_id: str) -> List[str]:
+    def generate_rules(self, legal_text: str) -> List[str]:
         """Generate human-readable rules from legal text."""
         # Generate rules using LLM
         return self.llm.generate_rules(legal_text)
