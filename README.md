@@ -15,6 +15,11 @@ This tool helps translate legal texts describing social benefit eligibility requ
 1. Install Poetry if you haven't already:
 ```bash
 curl -sSL https://install.python-poetry.org | python3 -
+# if only available at ~/.local/bin/poetry, link it globally: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+```
+
+```bash
+cd shacl_generator
 ```
 
 2. Install dependencies:
@@ -24,6 +29,7 @@ poetry install
 
 3. Run the application:
 ```bash
+export OPENAI_API_KEY="..."
 poetry run streamlit run app.py
 ```
 
