@@ -670,3 +670,17 @@ Output only the fixed Turtle syntax, no explanations."""
         )
         
         return self._process_llm_response(response.choices[0].message.content)
+
+    def consolidate_data_fields(self) -> str:
+        prompt_parts = ["Please analyse the following list of data fields and provide suggestions for consolidation. Separate your findings into those where you would suggest editing in some form and those where you would keep things as they are.\n"]
+        prompt_parts += self.field_registry.to_string()
+        prompt = "\n".join(prompt_parts)
+        response_object = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a helpful and thoughtful expert in the use of standardized data fields. Your priority is to consolidate the use of data fields and make sure existing ones are used whenever possible and new ones are created only when necessary. You may also suggest merging an existing with a new one if they are synonyms for example or it makes sense otherwise. Meaning can never be lost, but duplication must be avoided. You also know that some data fields can be derived from others. For instance: both someone's age and whether or not they are in pension-age can be derived from their birthday and a table of constants for pension-age. In such cases you are keen to suggest using the more foundational data field to be able to derive others automatically from it. A similar logic applies for example to children. As soon as we have more than one question about that child, like their age or their occupation, it makes sense to model a child class that then has these data fields attached as opposed to attaching them to the main user. Always explain your reasoning."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        return response_object.choices[0].message.content

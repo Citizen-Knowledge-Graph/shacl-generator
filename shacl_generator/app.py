@@ -113,7 +113,7 @@ with st.sidebar:
     mode = st.radio(
         "Mode",
         ["Generation Journey","Manage Shapes", "Manage Examples", "Manage Guidelines", 
-         "Manage Data Fields", "Manage Instances", "Manage Feedback"]
+         "Manage Data Fields", "Consolidate Data Fields", "Manage Instances", "Manage Feedback"]
     )
     
     
@@ -847,6 +847,18 @@ elif mode == "Manage Feedback":
                         generator.context.save(CONTEXT_PATH)
                         st.success(f"Feedback {i+1} deleted!")
                         st.rerun()
+
+elif mode == "Consolidate Data Fields":
+    st.header("Consolidate Data Fields")
+
+    button, = st.columns(1)
+
+    with button:
+        generate_rules_button = st.button("Inspect data fields")
+
+    if generate_rules_button:
+        with st.spinner("Consolidating data fields..."):
+            st.text_area("Suggestions", generator.llm.consolidate_data_fields(), height=300)
 
 else:  # Manage Data Fields mode
     st.header("Manage Data Fields")
