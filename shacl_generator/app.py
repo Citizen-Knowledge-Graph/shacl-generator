@@ -850,15 +850,12 @@ elif mode == "Manage Feedback":
 
 elif mode == "Consolidate Data Fields":
     st.header("Consolidate Data Fields")
-
-    button, = st.columns(1)
-
-    with button:
-        generate_rules_button = st.button("Inspect data fields")
-
-    if generate_rules_button:
+    button = st.button("Inspect data fields")
+    # consider_fim = st.checkbox("Consider FIM Data Fields")
+    consider_fim = False
+    if button:
         with st.spinner("Consolidating data fields..."):
-            st.markdown(generator.llm.consolidate_data_fields())
+            st.markdown(generator.llm.consolidate_data_fields(consider_fim))
 
 else:  # Manage Data Fields mode
     st.header("Manage Data Fields")
