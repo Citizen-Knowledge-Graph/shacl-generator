@@ -672,7 +672,7 @@ Output only the fixed Turtle syntax, no explanations."""
         return self._process_llm_response(response.choices[0].message.content)
 
     def consolidate_data_fields(self) -> str:
-        prompt_parts = ["Please analyse the following list of data fields and provide suggestions for consolidation. Separate your findings into those where you would suggest editing in some form and those where you would keep things as they are.\n"]
+        prompt_parts = ["Please analyse the following list of data fields and provide suggestions for consolidation. Separate your findings into two sections: one where you would suggest editing in some form and one where you would keep things as they are. Use markdown to structure your response nicely. The two overall sections should have big titles.\n"]
         prompt_parts += self.field_registry.to_string()
         prompt = "\n".join(prompt_parts)
         response_object = self.client.chat.completions.create(

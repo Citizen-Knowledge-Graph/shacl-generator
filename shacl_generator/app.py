@@ -858,7 +858,7 @@ elif mode == "Consolidate Data Fields":
 
     if generate_rules_button:
         with st.spinner("Consolidating data fields..."):
-            st.text_area("Suggestions", generator.llm.consolidate_data_fields(), height=300)
+            st.markdown(generator.llm.consolidate_data_fields())
 
 else:  # Manage Data Fields mode
     st.header("Manage Data Fields")
