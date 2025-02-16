@@ -425,4 +425,16 @@ class DataFieldRegistry:
             raise ValueError("Datatype must start with 'xsd:'")
             
         # Update the field's datatype
-        self.fields[field_name].datatype = new_datatype 
+        self.fields[field_name].datatype = new_datatype
+
+    def to_string(self) -> str:
+        str = []
+        for field in self.fields.values():
+            field_info = [f"\nField: {field.name}", f"Path: {field.path}", f"Datatype: {field.datatype}",
+                          f"Description: {field.description}"]
+            if field.constraints:
+                if 'allowed_values' in field.constraints:
+                    values = [val['id'] for val in field.constraints['allowed_values']]
+                    field_info.append(f"Allowed values: {', '.join(values)}")
+            str.append("\n".join(field_info))
+        return str

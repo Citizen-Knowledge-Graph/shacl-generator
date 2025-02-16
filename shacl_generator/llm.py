@@ -251,6 +251,7 @@ class LLMInterface:
         ]
         
         # Add available fields section with detailed information
+        # Use .to_string() method from DataFieldRegistry here? TODO
         if self.field_registry:
             prompt_parts.append("\nAvailable data fields that MUST be used when applicable:")
             for field in self.field_registry.fields.values():
